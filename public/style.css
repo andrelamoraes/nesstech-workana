@@ -172,3 +172,57 @@ legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
 .logs-list .log-line { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .logs-list .log-error { color: var(--danger); }
 .logs-list .log-warn { color: #e8c14a; }
+
+/* --- automatic sending ---------------------------------------------------- */
+
+.auto-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.auto-bar.dry { color: #e8c14a; border-bottom-color: #e8c14a55; }
+.auto-bar.live { color: var(--success); border-bottom-color: var(--success); }
+.auto-bar.paused { color: var(--danger); border-bottom-color: var(--danger); }
+.auto-bar button.small { padding: 2px 10px; font-size: 12px; }
+
+.job-card .badge-score,
+.job-card .badge-auto,
+.job-card .badge-dry {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  margin-left: 6px;
+}
+.job-card .badge-score { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+.job-card .badge-auto { background: var(--accent); color: #05122e; }
+.job-card .badge-dry { background: #e8c14a; color: #2b2200; }
+
+fieldset.danger-zone { border-color: var(--danger); }
+fieldset.danger-zone legend { color: var(--danger); }
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+label.checkbox input { width: auto; margin: 0; }
+
+.arm-status {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin: 8px 0;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.arm-status.armed { color: var(--danger); border-color: var(--danger); }

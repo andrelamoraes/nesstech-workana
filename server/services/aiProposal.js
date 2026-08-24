@@ -169,4 +169,72 @@ async function generateProposal({ apiKey, job, profileBio, model }) {
   return { text, modelUsed: modelId };
 }
 
-module.exports = { generateProposal, listAvailableModels, pickBestFlashModel };
+function buildScorePrompt(job, profileBio) {
+  return `Você avalia se VALE A PENA um freelancer específico gastar uma "Conexão" (crédito de proposta, recurso escasso) neste projeto do Workana. Seja severo: a maioria das vagas não vale.
+
+Perfil do freelancer:
+${profileBio || '(nenhum perfil configurado)'}
+
+Vaga:
+Título: ${job.title}
+Descrição: ${job.description}
+Habilidades pedidas: ${(job.skills || []).join(', ')}
+Orçamento informado: ${job.budget || 'não informado'}
+Propostas já recebidas: ${job.bids_count ?? 'desconhecido'}
+País do cliente: ${job.country || 'não informado'}
+${job.deadline ? `Prazo: ${job.deadline}` : ''}
+
+Penalize forte: escopo vago ou genérico demais pra estimar, orçamento incompatível com o escopo, sinais de cliente problemático (pede trabalho de graça/"teste", quer clone de plataforma grande por centavos, exige exclusividade), tecnologia que o perfil claramente não domina, e vagas com muitas propostas onde o freelancer não tem diferencial.
+
+Responda SOMENTE com JSON válido, sem markdown, neste formato exato:
+{"score": <0-100>, "fit": "<uma frase sobre o encaixe com o perfil>", "risks": ["<risco 1>", "<risco 2>"], "recommend": <true|false>}`;
+}
+
+function parseJsonLoose(text) {
+  if (!text) return null;
+  // Models like wrapping JSON in ```json fences despite being told not to.
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rates how worth-it a job is (0-100) for the configured profile. Used by the
+ * auto-send queue as the gate before spending a proposal credit — a keyword
+ * substring match isn't a good enough reason to bid unattended.
+ *
+ * Never throws: a scoring failure returns null so the caller can fall back to
+ * "don't auto-send" rather than crashing the whole cycle.
+ */
+async function scoreJob({ apiKey, job, profileBio, model }) {
+  if (!apiKey) return null;
+  try {
+    const resp = await callGeminiWithRetry(apiKey, model || DEFAULT_MODEL, buildScorePrompt(job, profileBio), 512);
+    if (!resp.ok) {
+      logger.warn(`Não consegui pontuar "${job.title}" (HTTP ${resp.status}).`);
+      return null;
+    }
+    const parsed = parseJsonLoose(extractText(await resp.json()));
+    if (!parsed || typeof parsed.score !== 'number') {
+      logger.warn(`Resposta de pontuação ilegível para "${job.title}".`);
+      return null;
+    }
+    return {
+      score: Math.max(0, Math.min(100, Math.round(parsed.score))),
+      fit: typeof parsed.fit === 'string' ? parsed.fit : '',
+      risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 4).map(String) : [],
+      recommend: parsed.recommend === true
+    };
+  } catch (err) {
+    logger.warn(`Falha ao pontuar "${job.title}": ${err.message}`);
+    return null;
+  }
+}
+
+module.exports = { generateProposal, scoreJob, listAvailableModels, pickBestFlashModel };

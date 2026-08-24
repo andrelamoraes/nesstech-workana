@@ -1,4 +1,4 @@
-const state = { jobs: [], activeJobId: null };
+const state = { jobs: [], activeJobId: null, auto: null };
 
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
@@ -69,8 +69,17 @@ function render() {
     for (const job of list) {
       const el = document.createElement('div');
       el.className = 'job-card' + (status === 'responded' ? ' has-response' : '');
+      const score = job.auto_score
+        ? `<span class="badge-score" title="${escapeHtml(job.auto_score.fit || '')}">${job.auto_score.score}</span>`
+        : '';
+      const autoTag =
+        job.sent_by === 'auto'
+          ? '<span class="badge-auto">auto</span>'
+          : job.auto_decision?.decision === 'would_send'
+            ? '<span class="badge-dry">enviaria</span>'
+            : '';
       el.innerHTML = `
-        <div class="title">${escapeHtml(job.title || '(sem título)')}${status === 'responded' ? '<span class="badge-new">novo</span>' : ''}</div>
+        <div class="title">${escapeHtml(job.title || '(sem título)')}${status === 'responded' ? '<span class="badge-new">novo</span>' : ''}${score}${autoTag}</div>
         <div class="meta">${escapeHtml(job.budget || '')} · ${job.bids_count ?? 0} propostas · ${escapeHtml(job.country || '')}</div>
       `;
       el.addEventListener('click', () => openJobModal(job.id));
@@ -78,6 +87,60 @@ function render() {
     }
   }
 }
+
+// --- automatic queue status --------------------------------------------------
+
+function describeAuto(a) {
+  if (!a.enabled) return 'Envio automático: DESLIGADO — as propostas só saem por clique.';
+  if (a.pausedUntil && new Date(a.pausedUntil) > new Date()) {
+    return `Envio automático: PAUSADO até ${new Date(a.pausedUntil).toLocaleString('pt-BR')} — ${a.pausedReason || 'motivo não registrado'}`;
+  }
+  if (a.effectiveDryRun) {
+    const why = a.dryRun ? 'dry-run ligado' : 'ainda não armado';
+    return `Envio automático: DRY-RUN (${why}) — preenche o formulário e não envia nada.`;
+  }
+  return `Envio automático: ATIVO — ${a.sentToday}/${a.maxPerDay} enviadas hoje${a.consecutiveFailures ? ` · ${a.consecutiveFailures} falha(s) seguida(s)` : ''}.`;
+}
+
+async function refreshAutoStatus() {
+  try {
+    const a = await api('/jobs/auto/status');
+    state.auto = a;
+    const bar = document.getElementById('autoBar');
+    document.getElementById('autoBarText').textContent = describeAuto(a);
+    bar.classList.toggle('live', a.enabled && !a.effectiveDryRun);
+    bar.classList.toggle('dry', a.enabled && a.effectiveDryRun);
+    bar.classList.toggle('paused', !!(a.pausedUntil && new Date(a.pausedUntil) > new Date()));
+    const resumeBtn = document.getElementById('resumeAutoBtn');
+    resumeBtn.classList.toggle('hidden', !(a.pausedUntil && new Date(a.pausedUntil) > new Date()));
+  } catch {
+    /* locked or server restarting — the bar just keeps its last text */
+  }
+}
+
+document.getElementById('resumeAutoBtn').addEventListener('click', async () => {
+  await api('/jobs/auto/resume', { method: 'POST' });
+  await refreshAutoStatus();
+});
+
+document.getElementById('runAutoBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('runAutoBtn');
+  btn.disabled = true;
+  btn.textContent = 'Rodando...';
+  try {
+    await api('/jobs/auto/run', { method: 'POST', body: JSON.stringify({ force: true }) });
+    setTimeout(async () => {
+      await loadJobs();
+      await refreshAutoStatus();
+      btn.disabled = false;
+      btn.textContent = 'Rodar fila automática';
+    }, 10000);
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Rodar fila automática';
+  }
+});
 
 document.getElementById('checkResponsesBtn').addEventListener('click', async () => {
   const btn = document.getElementById('checkResponsesBtn');
@@ -157,6 +220,19 @@ function openJobModal(id) {
     conversationBox.classList.add('hidden');
   }
 
+  const decisionEl = document.getElementById('jobAutoDecision');
+  const parts = [];
+  if (job.auto_score) {
+    parts.push(`Score da IA: ${job.auto_score.score}/100 — ${job.auto_score.fit || 'sem comentário'}`);
+    if (job.auto_score.risks?.length) parts.push(`Riscos apontados: ${job.auto_score.risks.join('; ')}`);
+  }
+  if (job.auto_decision) {
+    parts.push(`Decisão automática: ${job.auto_decision.decision} — ${job.auto_decision.reason || ''}`);
+  }
+  decisionEl.textContent = parts.join(' · ');
+
+  document.getElementById('probeOutput').classList.add('hidden');
+
   const alreadySent = job.status === 'sent' || job.status === 'responded';
   document.getElementById('jobModalActions').classList.toggle('hidden', alreadySent);
   document.getElementById('jobDraft').readOnly = alreadySent;
@@ -201,18 +277,62 @@ document.getElementById('skipBtn').addEventListener('click', async () => {
   await loadJobs();
 });
 
-document.getElementById('sendBtn').addEventListener('click', async () => {
+async function doSend({ dryRun }) {
   const id = state.activeJobId;
   const draft_text = document.getElementById('jobDraft').value;
   const budget = document.getElementById('jobBudget').value || undefined;
   const deliveryDays = document.getElementById('jobDeliveryDays').value || undefined;
   const errorEl = document.getElementById('jobModalError');
-  errorEl.textContent = 'Enviando (isso abre um navegador em segundo plano, pode levar alguns segundos)...';
+  errorEl.textContent = dryRun
+    ? 'Abrindo o formulário e preenchendo sem enviar...'
+    : 'Enviando (isso abre um navegador em segundo plano, pode levar alguns segundos)...';
   try {
     await api(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify({ draft_text }) });
-    await api(`/jobs/${id}/send`, { method: 'POST', body: JSON.stringify({ budget, deliveryDays }) });
-    document.getElementById('jobModal').classList.add('hidden');
+    const result = await api(`/jobs/${id}/send`, {
+      method: 'POST',
+      body: JSON.stringify({ budget, deliveryDays, dryRun })
+    });
+    if (dryRun) {
+      errorEl.textContent = result.message || 'Dry-run concluído.';
+    } else {
+      document.getElementById('jobModal').classList.add('hidden');
+    }
     await loadJobs();
+    await refreshAutoStatus();
+  } catch (err) {
+    errorEl.textContent = err.message;
+  }
+}
+
+document.getElementById('sendBtn').addEventListener('click', () => doSend({ dryRun: false }));
+document.getElementById('dryRunBtn').addEventListener('click', () => doSend({ dryRun: true }));
+
+document.getElementById('probeBtn').addEventListener('click', async () => {
+  const id = state.activeJobId;
+  const errorEl = document.getElementById('jobModalError');
+  const out = document.getElementById('probeOutput');
+  errorEl.textContent = 'Abrindo a vaga e inspecionando o formulário (só leitura)...';
+  try {
+    const { report, suggested } = await api(`/jobs/${id}/probe`, { method: 'POST' });
+    const lines = [];
+    lines.push(report.formOpened
+      ? `Formulário de proposta ABERTO com: ${report.openedWith}`
+      : `NÃO consegui abrir o formulário de proposta${report.openError ? ` (${report.openError})` : ''}`);
+    lines.push('');
+    for (const [role, info] of Object.entries(report.afterForm)) {
+      lines.push(`── ${role}`);
+      lines.push(`   atual: ${info.configured}`);
+      lines.push(`   quantos elementos casam: ${info.configuredMatchCount}`);
+      for (const c of info.candidates.slice(0, 4)) {
+        lines.push(`   candidato: ${c.suggestion || '(sem seletor estável)'}  [${c.tag}${c.name ? ` name=${c.name}` : ''}${c.visible ? '' : ' OCULTO'}] ${c.text ? `"${c.text.slice(0, 40)}"` : ''}`);
+      }
+      lines.push('');
+    }
+    lines.push('── Sugestão para config/selectors.json:');
+    lines.push(JSON.stringify(suggested, null, 2));
+    out.textContent = lines.join('\n');
+    out.classList.remove('hidden');
+    errorEl.textContent = '';
   } catch (err) {
     errorEl.textContent = err.message;
   }
@@ -234,6 +354,21 @@ document.getElementById('settingsBtn').addEventListener('click', async () => {
     document.getElementById('workanaCredsStatus').textContent =
       s.hasWorkanaEmail && s.hasWorkanaPassword ? 'Credenciais do Workana já configuradas.' : 'Credenciais do Workana ainda não configuradas.';
     document.getElementById('aiKeyStatus').textContent = s.hasAiApiKey ? 'Chave de IA já configurada.' : 'Chave de IA ainda não configurada.';
+    const a = s.autoSend || {};
+    document.getElementById('autoEnabled').checked = !!a.enabled;
+    document.getElementById('autoDryRun').checked = !!a.dryRun;
+    document.getElementById('autoMaxPerDay').value = a.maxPerDay ?? 5;
+    document.getElementById('autoMaxPerCycle').value = a.maxPerCycle ?? 2;
+    document.getElementById('autoMinScore').value = a.minScore ?? 70;
+    document.getElementById('autoMaxBids').value = a.maxBidsCount ?? 25;
+    document.getElementById('autoMinBudget').value = a.minBudgetUsd ?? 0;
+    document.getElementById('autoDelay').value = a.minDelayBetweenSendsSec ?? 90;
+    document.getElementById('autoBudgetStrategy').value = a.budgetStrategy || 'job_min';
+    document.getElementById('autoFixedBudget').value = a.fixedBudget ?? 0;
+    document.getElementById('autoDeliveryDays').value = a.defaultDeliveryDays ?? 14;
+    document.getElementById('autoBlocklist').value = (a.blocklist || []).join(', ');
+    renderArmStatus(a.armed);
+
     document.getElementById('workanaEmail').value = '';
     document.getElementById('workanaPassword').value = '';
     document.getElementById('aiApiKey').value = '';
@@ -249,6 +384,35 @@ document.getElementById('closeSettingsModal').addEventListener('click', () => {
   document.getElementById('settingsModal').classList.add('hidden');
 });
 
+function renderArmStatus(armed) {
+  const el = document.getElementById('armStatus');
+  el.textContent = armed
+    ? 'ARMADO — a fila envia propostas de verdade, sem clique.'
+    : 'Não armado — todo ciclo roda como dry-run.';
+  el.classList.toggle('armed', !!armed);
+  document.getElementById('armBtn').textContent = armed ? 'Desarmar (voltar para dry-run)' : 'Armar envio real';
+}
+
+document.getElementById('armBtn').addEventListener('click', async () => {
+  const currentlyArmed = document.getElementById('armStatus').classList.contains('armed');
+  if (!currentlyArmed) {
+    const ok = confirm(
+      'Armar o envio real?\n\n' +
+        'A partir daí o sistema envia propostas no seu nome, sozinho, sem você revisar cada uma.\n' +
+        'Isso normalmente viola os Termos de Uso do Workana e pode banir sua conta.\n\n' +
+        'Só faça isso depois que "Testar envio (sem enviar)" tiver passado numa vaga real.'
+    );
+    if (!ok) return;
+  }
+  try {
+    const status = await api('/jobs/auto/arm', { method: 'POST', body: JSON.stringify({ armed: !currentlyArmed }) });
+    renderArmStatus(status.armed);
+    await refreshAutoStatus();
+  } catch (err) {
+    document.getElementById('settingsError').textContent = err.message;
+  }
+});
+
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const payload = {
@@ -262,12 +426,27 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     aiModel: document.getElementById('aiModel').value,
     workanaEmail: document.getElementById('workanaEmail').value,
     workanaPassword: document.getElementById('workanaPassword').value,
-    aiApiKey: document.getElementById('aiApiKey').value
+    aiApiKey: document.getElementById('aiApiKey').value,
+    autoSend: {
+      enabled: document.getElementById('autoEnabled').checked,
+      dryRun: document.getElementById('autoDryRun').checked,
+      maxPerDay: Number(document.getElementById('autoMaxPerDay').value),
+      maxPerCycle: Number(document.getElementById('autoMaxPerCycle').value),
+      minScore: Number(document.getElementById('autoMinScore').value),
+      maxBidsCount: Number(document.getElementById('autoMaxBids').value),
+      minBudgetUsd: Number(document.getElementById('autoMinBudget').value),
+      minDelayBetweenSendsSec: Number(document.getElementById('autoDelay').value),
+      budgetStrategy: document.getElementById('autoBudgetStrategy').value,
+      fixedBudget: Number(document.getElementById('autoFixedBudget').value),
+      defaultDeliveryDays: Number(document.getElementById('autoDeliveryDays').value),
+      blocklist: document.getElementById('autoBlocklist').value.split(',').map((s) => s.trim()).filter(Boolean)
+    }
   };
   try {
     await api('/settings', { method: 'POST', body: JSON.stringify(payload) });
     document.getElementById('settingsSaved').textContent = 'Configurações salvas.';
     document.getElementById('settingsError').textContent = '';
+    await refreshAutoStatus();
   } catch (err) {
     document.getElementById('settingsError').textContent = err.message;
   }
@@ -292,12 +471,16 @@ document.getElementById('closeLogsModal').addEventListener('click', () => {
 
 async function boot() {
   const unlocked = await checkStatus();
-  if (unlocked) await loadJobs();
+  if (unlocked) {
+    await loadJobs();
+    await refreshAutoStatus();
+  }
 }
 
 boot();
 setInterval(async () => {
   if (!document.getElementById('app').classList.contains('hidden')) {
     await loadJobs().catch(() => {});
+    await refreshAutoStatus();
   }
 }, 20000);

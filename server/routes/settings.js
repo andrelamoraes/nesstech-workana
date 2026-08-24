@@ -21,6 +21,7 @@ router.get('/', requireUnlocked, (req, res) => {
     scanIntervalMinutes: settings.scanIntervalMinutes,
     aiProvider: settings.aiProvider,
     aiModel: settings.aiModel,
+    autoSend: settings.autoSend,
     hasWorkanaEmail: !!settings.workanaEmailEnc,
     hasWorkanaPassword: !!settings.workanaPasswordEnc,
     hasAiApiKey: !!settings.aiApiKeyEnc
@@ -40,6 +41,35 @@ router.post('/', requireUnlocked, (req, res) => {
   if (typeof body.scanIntervalMinutes === 'number') s.scanIntervalMinutes = body.scanIntervalMinutes;
   if (typeof body.aiProvider === 'string') s.aiProvider = body.aiProvider;
   if (typeof body.aiModel === 'string' && body.aiModel.trim()) s.aiModel = body.aiModel.trim();
+
+  if (body.autoSend && typeof body.autoSend === 'object') {
+    const a = s.autoSend;
+    const inc = body.autoSend;
+    const num = (v, min, max, fallback) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(max, Math.max(min, n));
+    };
+
+    if (typeof inc.enabled === 'boolean') a.enabled = inc.enabled;
+    if (typeof inc.dryRun === 'boolean') a.dryRun = inc.dryRun;
+    // `armed` is intentionally NOT settable here — it has its own endpoint
+    // (POST /api/jobs/auto/arm) so it can't be flipped by a stray settings save.
+    if (inc.maxPerDay !== undefined) a.maxPerDay = num(inc.maxPerDay, 0, 50, a.maxPerDay);
+    if (inc.maxPerCycle !== undefined) a.maxPerCycle = num(inc.maxPerCycle, 1, 10, a.maxPerCycle);
+    if (inc.minScore !== undefined) a.minScore = num(inc.minScore, 0, 100, a.minScore);
+    if (inc.minBudgetUsd !== undefined) a.minBudgetUsd = num(inc.minBudgetUsd, 0, 1e6, a.minBudgetUsd);
+    if (inc.maxBidsCount !== undefined) a.maxBidsCount = num(inc.maxBidsCount, 0, 500, a.maxBidsCount);
+    if (inc.fixedBudget !== undefined) a.fixedBudget = num(inc.fixedBudget, 0, 1e6, a.fixedBudget);
+    if (inc.defaultDeliveryDays !== undefined) a.defaultDeliveryDays = num(inc.defaultDeliveryDays, 1, 365, a.defaultDeliveryDays);
+    if (inc.minDelayBetweenSendsSec !== undefined) {
+      a.minDelayBetweenSendsSec = num(inc.minDelayBetweenSendsSec, 30, 3600, a.minDelayBetweenSendsSec);
+    }
+    if (Array.isArray(inc.blocklist)) a.blocklist = inc.blocklist.map(String).filter(Boolean);
+    if (['job_min', 'job_mid', 'job_max', 'fixed'].includes(inc.budgetStrategy)) {
+      a.budgetStrategy = inc.budgetStrategy;
+    }
+  }
 
   if (typeof body.workanaEmail === 'string' && body.workanaEmail.trim()) {
     s.workanaEmailEnc = vault.encrypt(body.workanaEmail.trim());

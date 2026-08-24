@@ -4,6 +4,7 @@ const vault = require('../vault');
 const logger = require('./logger');
 const { scanAndDraft } = require('./scanAndDraft');
 const { checkResponses } = require('./workanaResponses');
+const { runAutoSend } = require('./autoSend');
 
 let task = null;
 let currentIntervalMinutes = null;
@@ -24,6 +25,13 @@ function scheduleFromSettings() {
     } catch (err) {
       logger.error(`Erro na varredura agendada: ${err.message}`);
     }
+    // Runs right after the scan so fresh drafts are eligible in the same
+    // cycle. Returns immediately when auto-send is off (the default).
+    try {
+      await runAutoSend();
+    } catch (err) {
+      logger.error(`Erro no envio automático agendado: ${err.message}`);
+    }
     try {
       const { settings, jobs } = db.load();
       const email = vault.decrypt(settings.workanaEmailEnc);
@@ -39,7 +47,13 @@ function scheduleFromSettings() {
       logger.error(`Erro na checagem agendada de respostas: ${err.message}`);
     }
   });
-  logger.info(`Agendador configurado para rodar a cada ${minutes} minuto(s). Busca vagas, rascunha com IA e confere respostas — nunca envia nada sozinho.`);
+  const autoSend = db.load().settings.autoSend || {};
+  const mode = !autoSend.enabled
+    ? 'envio automático DESLIGADO'
+    : autoSend.dryRun || !autoSend.armed
+      ? 'envio automático em DRY-RUN (não envia nada)'
+      : `envio automático LIGADO (até ${autoSend.maxPerDay}/dia)`;
+  logger.info(`Agendador configurado para rodar a cada ${minutes} minuto(s): busca vagas, rascunha com IA, confere respostas — ${mode}.`);
 }
 
 module.exports = { scheduleFromSettings };

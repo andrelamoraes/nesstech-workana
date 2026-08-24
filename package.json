@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server/index.js",
+    "test": "node test/smoke.js && node test/autosend.js",
     "postinstall": "playwright install chromium"
   },
   "dependencies": {

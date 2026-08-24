@@ -26,12 +26,20 @@
     <h1>Nesstech · Workana</h1>
     <div class="header-actions">
       <button id="scanNowBtn">Buscar vagas agora</button>
+      <button id="runAutoBtn" class="secondary">Rodar fila automática</button>
       <button id="checkResponsesBtn" class="secondary">Verificar respostas</button>
       <button id="settingsBtn" class="secondary">Configurações</button>
       <button id="logsBtn" class="secondary">Logs</button>
       <button id="lockBtn" class="secondary">Bloquear</button>
     </div>
   </header>
+
+  <div id="autoBar" class="auto-bar">
+    <span id="autoBarText">Envio automático: carregando...</span>
+    <span class="auto-bar-actions">
+      <button id="resumeAutoBtn" class="secondary small hidden">Retomar</button>
+    </span>
+  </div>
 
   <main>
     <div class="board">
@@ -88,11 +96,15 @@
     <div class="modal-actions" id="jobModalActions">
       <button id="regenerateBtn" class="secondary">Gerar novo rascunho (IA)</button>
       <button id="saveDraftBtn" class="secondary">Salvar rascunho</button>
+      <button id="probeBtn" class="secondary">Diagnosticar formulário</button>
+      <button id="dryRunBtn" class="secondary">Testar envio (sem enviar)</button>
       <button id="skipBtn" class="danger">Ignorar vaga</button>
       <button id="sendBtn" class="primary">Enviar proposta no Workana</button>
     </div>
     <p id="jobModalError" class="error"></p>
-    <p class="muted small">O envio abre uma sessão do navegador em segundo plano e envia exatamente o texto acima — nada é enviado automaticamente sem você clicar aqui.</p>
+    <p id="jobAutoDecision" class="muted small"></p>
+    <pre id="probeOutput" class="job-description conversation-box hidden"></pre>
+    <p class="muted small">"Diagnosticar formulário" só lê a página e mostra os seletores reais. "Testar envio" preenche tudo e para antes do clique final — use os dois para validar <code>config/selectors.json</code> antes de armar o envio automático.</p>
   </div>
 </div>
 
@@ -158,6 +170,75 @@
         <input type="number" id="minBudgetUsd" min="0">
         <label>Intervalo da varredura automática (minutos)</label>
         <input type="number" id="scanIntervalMinutes" min="5">
+      </fieldset>
+
+      <fieldset class="danger-zone">
+        <legend>Envio automático (sem clique)</legend>
+        <p class="muted small">
+          Enviar propostas sem revisão humana normalmente viola os Termos de Uso do Workana
+          e pode resultar em banimento da conta. Os limites abaixo existem para reduzir esse
+          risco — não para eliminá-lo.
+        </p>
+
+        <label class="checkbox"><input type="checkbox" id="autoEnabled"> Ligar a fila automática</label>
+        <label class="checkbox"><input type="checkbox" id="autoDryRun"> Modo dry-run (preenche o formulário e NÃO envia)</label>
+
+        <div id="armStatus" class="arm-status"></div>
+        <button type="button" id="armBtn" class="danger">Armar envio real</button>
+        <p class="muted small">
+          Enquanto não estiver armado, todo ciclo roda como dry-run mesmo com a fila ligada.
+          Arme só depois que um "Testar envio (sem enviar)" passar em uma vaga real.
+        </p>
+
+        <div class="row">
+          <div>
+            <label>Máximo por dia</label>
+            <input type="number" id="autoMaxPerDay" min="0" max="50">
+          </div>
+          <div>
+            <label>Máximo por ciclo</label>
+            <input type="number" id="autoMaxPerCycle" min="1" max="10">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Score mínimo da IA (0-100)</label>
+            <input type="number" id="autoMinScore" min="0" max="100">
+          </div>
+          <div>
+            <label>Máx. de propostas já recebidas</label>
+            <input type="number" id="autoMaxBids" min="0" max="500">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Orçamento mínimo da vaga (USD)</label>
+            <input type="number" id="autoMinBudget" min="0">
+          </div>
+          <div>
+            <label>Intervalo entre envios (segundos)</label>
+            <input type="number" id="autoDelay" min="30" max="3600">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Valor a propor</label>
+            <select id="autoBudgetStrategy">
+              <option value="job_min">Mínimo da faixa da vaga</option>
+              <option value="job_mid">Meio da faixa da vaga</option>
+              <option value="job_max">Máximo da faixa da vaga</option>
+              <option value="fixed">Valor fixo</option>
+            </select>
+          </div>
+          <div>
+            <label>Valor fixo (se escolhido acima)</label>
+            <input type="number" id="autoFixedBudget" min="0">
+          </div>
+        </div>
+        <label>Prazo padrão a propor (dias)</label>
+        <input type="number" id="autoDeliveryDays" min="1" max="365">
+        <label>Termos que vetam o envio (separados por vírgula)</label>
+        <input type="text" id="autoBlocklist" placeholder="wordpress, teste grátis, clone do">
       </fieldset>
 
       <button type="submit" class="primary">Salvar configurações</button>
