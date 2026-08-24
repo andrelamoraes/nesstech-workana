@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+
+# Credenciais criptografadas, sessão do navegador e vagas capturadas.
+# NUNCA versionar — contém o cofre com login do Workana e chave da IA.
+data/
+
+# Configuração local do Claude Code (específica desta máquina)
+.claude/

@@ -1,0 +1,8 @@
+{
+  "_readme": "Seletores usados para preencher e enviar a proposta na página da vaga. Foram inferidos a partir de padrões comuns do Workana, mas a tela de proposta só é renderizada para usuários autenticados, então NÃO foram confirmados com login real. Antes do primeiro envio: rode `WORKANA_HEADLESS=false npm start`, dispare um envio de teste em uma vaga real, observe o navegador abrir e ajuste os valores abaixo para bater com o que você vê (clique com o botão direito > Inspecionar no campo certo).",
+  "proposalButton": "a.btn-inverse, a:has-text('Enviar proposta'), a:has-text('Envía una propuesta'), button:has-text('Enviar proposta')",
+  "messageField": "textarea[name='message'], textarea#message, textarea[name='comment']",
+  "budgetField": "input[name='budget'], input#budget, input[name='bid']",
+  "deliveryField": "input[name='days'], input#delivery-days, input[name='delivery_days']",
+  "submitButton": "form button[type='submit'], button:has-text('Enviar')"
+}

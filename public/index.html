@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nesstech · Workana</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="lockScreen" class="screen hidden">
+  <div class="card narrow">
+    <h1>Nesstech · Workana</h1>
+    <p id="lockSubtitle" class="muted"></p>
+    <form id="lockForm">
+      <label>Senha mestra do cofre</label>
+      <input type="password" id="lockPassword" required minlength="8" autocomplete="new-password">
+      <button type="submit">Entrar</button>
+    </form>
+    <p id="lockError" class="error"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>Nesstech · Workana</h1>
+    <div class="header-actions">
+      <button id="scanNowBtn">Buscar vagas agora</button>
+      <button id="checkResponsesBtn" class="secondary">Verificar respostas</button>
+      <button id="settingsBtn" class="secondary">Configurações</button>
+      <button id="logsBtn" class="secondary">Logs</button>
+      <button id="lockBtn" class="secondary">Bloquear</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="board">
+      <section class="column" data-status="new">
+        <h2>Novas <span class="count" id="count-new">0</span></h2>
+        <div class="cards" id="cards-new"></div>
+      </section>
+      <section class="column" data-status="drafted">
+        <h2>Rascunho pronto <span class="count" id="count-drafted">0</span></h2>
+        <div class="cards" id="cards-drafted"></div>
+      </section>
+      <section class="column" data-status="sent">
+        <h2>Enviadas <span class="count" id="count-sent">0</span></h2>
+        <div class="cards" id="cards-sent"></div>
+      </section>
+      <section class="column" data-status="responded">
+        <h2>Respondidas <span class="count" id="count-responded">0</span></h2>
+        <div class="cards" id="cards-responded"></div>
+      </section>
+      <section class="column" data-status="skipped">
+        <h2>Ignoradas / Falhas <span class="count" id="count-skipped">0</span></h2>
+        <div class="cards" id="cards-skipped"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="jobModal" class="modal hidden">
+  <div class="modal-content">
+    <button class="close" id="closeJobModal">&times;</button>
+    <h2 id="jobTitle"></h2>
+    <p class="muted" id="jobMeta"></p>
+    <p id="jobDescription" class="job-description"></p>
+
+    <div id="jobConversation" class="hidden">
+      <label>Status do projeto no Workana / última conversa vista <span id="jobConversationTime" class="muted small"></span></label>
+      <p class="muted small" id="jobProjectStatus"></p>
+      <pre id="jobConversationText" class="job-description conversation-box"></pre>
+      <p class="muted small"><a id="jobOpenLink" href="#" target="_blank" rel="noopener">Abrir a vaga no Workana para responder ao cliente →</a></p>
+    </div>
+
+    <label>Proposta (revise antes de enviar)</label>
+    <textarea id="jobDraft" rows="10"></textarea>
+    <div class="row">
+      <div>
+        <label>Valor proposto (USD, opcional)</label>
+        <input type="number" id="jobBudget" min="0">
+      </div>
+      <div>
+        <label>Prazo (dias, opcional)</label>
+        <input type="number" id="jobDeliveryDays" min="1">
+      </div>
+    </div>
+    <div class="modal-actions" id="jobModalActions">
+      <button id="regenerateBtn" class="secondary">Gerar novo rascunho (IA)</button>
+      <button id="saveDraftBtn" class="secondary">Salvar rascunho</button>
+      <button id="skipBtn" class="danger">Ignorar vaga</button>
+      <button id="sendBtn" class="primary">Enviar proposta no Workana</button>
+    </div>
+    <p id="jobModalError" class="error"></p>
+    <p class="muted small">O envio abre uma sessão do navegador em segundo plano e envia exatamente o texto acima — nada é enviado automaticamente sem você clicar aqui.</p>
+  </div>
+</div>
+
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-content">
+    <button class="close" id="closeSettingsModal">&times;</button>
+    <h2>Configurações</h2>
+    <form id="settingsForm">
+      <fieldset>
+        <legend>Credenciais Workana</legend>
+        <label>Email</label>
+        <input type="email" id="workanaEmail" placeholder="(deixe em branco para não alterar)" autocomplete="off">
+        <label>Senha</label>
+        <input type="password" id="workanaPassword" placeholder="(deixe em branco para não alterar)" autocomplete="new-password">
+        <p class="muted small" id="workanaCredsStatus"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>IA para gerar propostas</legend>
+        <label>Provedor</label>
+        <select id="aiProvider">
+          <option value="gemini">Google Gemini (gratuito)</option>
+        </select>
+        <label>Chave da API</label>
+        <input type="password" id="aiApiKey" placeholder="(deixe em branco para não alterar)" autocomplete="off">
+        <p class="muted small">Crie uma chave gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> e cole aqui.</p>
+        <p class="muted small" id="aiKeyStatus"></p>
+        <label>Modelo</label>
+        <input type="text" id="aiModel" placeholder="gemini-flash-latest">
+        <p class="muted small">"gemini-flash-latest" é um alias do próprio Google que sempre aponta pro modelo Flash atual — evita quebrar quando eles descontinuam uma versão. Se mesmo assim der erro 404, veja o nome exato em <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener">ai.google.dev/gemini-api/docs/models</a> e cole aqui — sem precisar mexer em código.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Seu perfil (usado pela IA para redigir as propostas)</legend>
+        <label>Resumo do seu perfil / experiência</label>
+        <textarea id="profileBio" rows="5" placeholder="Ex: Desenvolvedor full-stack há 6 anos, foco em Node.js e React, já entreguei X projetos de..."></textarea>
+      </fieldset>
+
+      <fieldset>
+        <legend>Filtros de busca</legend>
+        <label>Área do projeto</label>
+        <select id="category">
+          <option value="it-programming">Programação e Tecnologia</option>
+          <option value="">Todas as áreas</option>
+          <option value="design-multimedia">Design e Multimídia</option>
+          <option value="writing-translation">Redação e Tradução</option>
+          <option value="sales-marketing">Marketing Digital e Vendas</option>
+          <option value="admin-support">Suporte Administrativo</option>
+          <option value="legal">Jurídico</option>
+          <option value="finance-management">Finanças e Negócios</option>
+          <option value="engineering-manufacturing">Engenharia e Arquitetura</option>
+        </select>
+        <label>Palavras-chave (separadas por vírgula, vazio = todas)</label>
+        <input type="text" id="keywords" placeholder="node, react, automação">
+        <label>Idioma da vaga</label>
+        <select id="language">
+          <option value="pt">Português</option>
+          <option value="es">Español</option>
+          <option value="en">English</option>
+          <option value="">Todos</option>
+        </select>
+        <label>Orçamento mínimo (USD, 0 = sem filtro)</label>
+        <input type="number" id="minBudgetUsd" min="0">
+        <label>Intervalo da varredura automática (minutos)</label>
+        <input type="number" id="scanIntervalMinutes" min="5">
+      </fieldset>
+
+      <button type="submit" class="primary">Salvar configurações</button>
+      <p id="settingsError" class="error"></p>
+      <p id="settingsSaved" class="muted small"></p>
+    </form>
+  </div>
+</div>
+
+<div id="logsModal" class="modal hidden">
+  <div class="modal-content">
+    <button class="close" id="closeLogsModal">&times;</button>
+    <h2>Logs recentes</h2>
+    <div id="logsList" class="logs-list"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

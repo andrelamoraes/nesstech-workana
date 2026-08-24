@@ -1,0 +1,16 @@
+{
+  "name": "nesstech-workana",
+  "version": "1.0.0",
+  "description": "Painel local para monitorar vagas no Workana e redigir propostas com IA (envio sempre revisado por humano)",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.47.0"
+  }
+}
