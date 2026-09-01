@@ -2,15 +2,13 @@ node_modules/
 .env
 *.log
 
-# data/ é versionado por decisão explícita, para o histórico de vagas e as
-# configurações acompanharem o repositório entre máquinas.
-#
-# ATENÇÃO: data/db.json guarda o cofre (salt + verifier) e, assim que as
-# Configurações forem preenchidas, também a senha do Workana e a chave da IA
-# criptografadas. data/workana-session.json guarda os cookies de sessão ativa —
-# quem tiver esse arquivo acessa a conta do Workana sem precisar de senha.
-# Portanto: mantenha este repositório PRIVADO e trate quem tem acesso a ele
-# como quem tem acesso à conta.
+# Credenciais criptografadas, sessão do navegador, diagnósticos e vagas
+# capturadas. NUNCA versionar — data/db.json guarda o cofre e, assim que
+# Configurações é preenchido, a senha do Workana e a chave da IA (encriptadas,
+# mas ainda assim não pertencem a um repositório, ainda mais um público).
+# data/workana-session.json guarda cookies de sessão ativa: quem tiver esse
+# arquivo entra na conta do Workana sem senha nenhuma.
+data/
 
 # Configuração local do Claude Code (específica desta máquina)
 .claude/
