@@ -3,6 +3,7 @@ const vault = require('../vault');
 const logger = require('./logger');
 const scraper = require('./workanaScraper');
 const ai = require('./aiProposal');
+const { notifyNewOpportunities } = require('./opportunityNotifier');
 
 function parseMinBudget(budgetStr) {
   if (!budgetStr) return null;
@@ -136,7 +137,11 @@ async function scanAndDraft() {
     }
 
     logger.info(`Varredura concluída: ${found.length} vagas encontradas, ${added} novas, ${drafted} com rascunho de IA${retried ? `, ${retried} rascunho(s) pendente(s) recuperado(s)` : ''}.`);
-    return { found: found.length, added, drafted, retried };
+
+    // WhatsApp alert for the good ones. Runs on every scan (scheduled or
+    // manual) and never throws, so a WAHA outage can't break scanning.
+    const notified = await notifyNewOpportunities();
+    return { found: found.length, added, drafted, retried, notified };
   } finally {
     scanning = false;
   }

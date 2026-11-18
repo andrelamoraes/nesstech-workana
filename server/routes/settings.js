@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../db');
 const vault = require('../vault');
 const scheduler = require('../services/scheduler');
+const waha = require('../services/waha');
+const notifier = require('../services/opportunityNotifier');
 
 const router = express.Router();
 
@@ -22,6 +24,10 @@ router.get('/', requireUnlocked, (req, res) => {
     aiProvider: settings.aiProvider,
     aiModel: settings.aiModel,
     autoSend: settings.autoSend,
+    whatsapp: settings.whatsapp,
+    wahaConfigured: waha.isConfigured(),
+    wahaUrl: waha.config().url || null,
+    wahaSession: waha.config().session,
     hasWorkanaEmail: !!settings.workanaEmailEnc,
     hasWorkanaPassword: !!settings.workanaPasswordEnc,
     hasAiApiKey: !!settings.aiApiKeyEnc
@@ -71,6 +77,18 @@ router.post('/', requireUnlocked, (req, res) => {
     }
   }
 
+  if (body.whatsapp && typeof body.whatsapp === 'object') {
+    const w = s.whatsapp;
+    const inc = body.whatsapp;
+    if (typeof inc.enabled === 'boolean') w.enabled = inc.enabled;
+    if (Array.isArray(inc.recipients)) {
+      w.recipients = [...new Set(inc.recipients.map(waha.onlyDigits).filter((d) => d.length >= 10 && d.length <= 15))];
+    }
+    if (inc.minScore !== undefined && Number.isFinite(Number(inc.minScore))) {
+      w.minScore = Math.min(100, Math.max(0, Number(inc.minScore)));
+    }
+  }
+
   if (typeof body.workanaEmail === 'string' && body.workanaEmail.trim()) {
     s.workanaEmailEnc = vault.encrypt(body.workanaEmail.trim());
   }
@@ -84,6 +102,23 @@ router.post('/', requireUnlocked, (req, res) => {
   db.save();
   scheduler.scheduleFromSettings();
   res.json({ ok: true });
+});
+
+router.get('/whatsapp/status', requireUnlocked, async (req, res) => {
+  if (!waha.isConfigured()) return res.json({ configured: false });
+  try {
+    res.json({ configured: true, ...(await waha.sessionStatus()) });
+  } catch (err) {
+    res.json({ configured: true, error: err.message });
+  }
+});
+
+router.post('/whatsapp/test', requireUnlocked, async (req, res) => {
+  try {
+    res.json({ results: await notifier.sendTest() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 module.exports = router;

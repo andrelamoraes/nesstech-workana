@@ -368,6 +368,12 @@ document.getElementById('settingsBtn').addEventListener('click', async () => {
     document.getElementById('autoDeliveryDays').value = a.defaultDeliveryDays ?? 14;
     document.getElementById('autoBlocklist').value = (a.blocklist || []).join(', ');
     renderArmStatus(a.armed);
+    const w = s.whatsapp || {};
+    document.getElementById('waEnabled').checked = !!w.enabled;
+    document.getElementById('waRecipients').value = (w.recipients || []).join(', ');
+    document.getElementById('waMinScore').value = w.minScore ?? 70;
+    document.getElementById('waTestResult').textContent = '';
+    renderWahaStatus(s);
 
     document.getElementById('workanaEmail').value = '';
     document.getElementById('workanaPassword').value = '';
@@ -382,6 +388,34 @@ document.getElementById('settingsBtn').addEventListener('click', async () => {
 
 document.getElementById('closeSettingsModal').addEventListener('click', () => {
   document.getElementById('settingsModal').classList.add('hidden');
+});
+
+async function renderWahaStatus(s) {
+  const el = document.getElementById('wahaStatus');
+  if (!s.wahaConfigured) {
+    el.textContent = 'WAHA não configurado: defina WAHA_URL (e WAHA_API_KEY, se houver) no ambiente do servidor.';
+    return;
+  }
+  el.textContent = `WAHA em ${s.wahaUrl}, sessão "${s.wahaSession}" — verificando...`;
+  try {
+    const st = await api('/settings/whatsapp/status');
+    el.textContent = st.error
+      ? `WAHA em ${s.wahaUrl}: ${st.error}`
+      : `WAHA em ${s.wahaUrl}, sessão "${st.session}": ${st.status}${st.status === 'WORKING' ? ' ✓' : ' (precisa estar WORKING para enviar)'}`;
+  } catch (err) {
+    el.textContent = `Falha ao consultar o WAHA: ${err.message}`;
+  }
+}
+
+document.getElementById('waTestBtn').addEventListener('click', async () => {
+  const out = document.getElementById('waTestResult');
+  out.textContent = 'Enviando... (salve as configurações antes, se mudou os números)';
+  try {
+    const { results } = await api('/settings/whatsapp/test', { method: 'POST' });
+    out.textContent = results.map((r) => `${r.phone}: ${r.ok ? 'enviado ✓' : 'falhou — ' + r.error}`).join(' · ');
+  } catch (err) {
+    out.textContent = err.message;
+  }
 });
 
 function renderArmStatus(armed) {
@@ -427,6 +461,11 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     workanaEmail: document.getElementById('workanaEmail').value,
     workanaPassword: document.getElementById('workanaPassword').value,
     aiApiKey: document.getElementById('aiApiKey').value,
+    whatsapp: {
+      enabled: document.getElementById('waEnabled').checked,
+      recipients: document.getElementById('waRecipients').value.split(',').map((s) => s.trim()).filter(Boolean),
+      minScore: Number(document.getElementById('waMinScore').value)
+    },
     autoSend: {
       enabled: document.getElementById('autoEnabled').checked,
       dryRun: document.getElementById('autoDryRun').checked,

@@ -40,6 +40,13 @@ const DEFAULT_STATE = {
       fixedBudget: 0,
       defaultDeliveryDays: 14,
       minDelayBetweenSendsSec: 90
+    },
+    // WhatsApp alerts (via WAHA) for each new job the AI rates >= minScore.
+    // Connection to WAHA comes from env (WAHA_URL / WAHA_API_KEY / WAHA_SESSION).
+    whatsapp: {
+      enabled: true,
+      recipients: ['5511997135040', '5521992015506'],
+      minScore: 70
     }
   },
   autoSendState: null,
@@ -67,6 +74,7 @@ function load() {
   // autoSend is a nested object, so the spread above would drop any key added
   // after this db.json was written — merge it one level deeper.
   state.settings.autoSend = { ...DEFAULT_STATE.settings.autoSend, ...(state.settings.autoSend || {}) };
+  state.settings.whatsapp = { ...DEFAULT_STATE.settings.whatsapp, ...(state.settings.whatsapp || {}) };
   return state;
 }
 

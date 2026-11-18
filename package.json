@@ -1,12 +1,15 @@
 {
   "name": "nesstech-workana",
   "version": "1.0.0",
-  "description": "Painel local para monitorar vagas no Workana e redigir propostas com IA (envio sempre revisado por humano)",
+  "description": "Painel para monitorar vagas no Workana, redigir propostas com IA e avisar boas oportunidades no WhatsApp (WAHA)",
   "main": "server/index.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/smoke.js && node test/autosend.js",
+    "test": "node test/smoke.js && node test/autosend.js && node test/whatsapp.js",
     "postinstall": "playwright install chromium"
   },
   "dependencies": {

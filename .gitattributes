@@ -1,0 +1,3 @@
+# Scripts e unit files vão para Linux — nunca com CRLF, mesmo vindo de um checkout no Windows.
+*.sh text eol=lf
+deploy/* text eol=lf

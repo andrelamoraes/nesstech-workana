@@ -1,7 +1,7 @@
 # Nesstech · Workana — painel de propostas
 
-Painel local (roda só na sua máquina) para monitorar vagas novas no Workana compatíveis
-com seu perfil, gerar rascunhos de proposta com IA e **enviar as propostas sozinho, sem
+Painel (roda na sua máquina ou num servidor Ubuntu) para monitorar vagas novas no Workana compatíveis
+com seu perfil, avisar as boas no WhatsApp (via WAHA), gerar rascunhos de proposta com IA e **enviar as propostas sozinho, sem
 clique** — ou com clique, se você preferir revisar cada uma.
 
 ## Aviso
@@ -145,13 +145,110 @@ $env:WORKANA_SHOW_WINDOW="true"; npm start
 WORKANA_SHOW_WINDOW=true npm start
 ```
 
+## Avisos de boas oportunidades no WhatsApp (WAHA)
+
+A cada varredura (agendada ou manual), toda vaga **nova** que passou nos filtros de
+busca é pontuada pela IA (o mesmo score de 0 a 100 da fila automática). Se o score for
+**igual ou maior que o mínimo** (padrão 70), o painel manda pelo WAHA, para cada número
+configurado, uma mensagem com:
+
+- título da vaga;
+- faixa de pagamento oferecida pelo cliente;
+- score da IA e quantas propostas a vaga já recebeu;
+- link da vaga no Workana, onde fica o botão "Enviar proposta".
+
+Detalhes:
+
+- Os números padrão são `5511997135040` e `5521992015506`; dá para trocar, ligar/desligar
+  e ajustar o score mínimo em **Configurações › Avisos por WhatsApp**, que também tem um
+  botão **Enviar mensagem de teste** e mostra se a sessão do WAHA está `WORKING`.
+- Antes de enviar, o painel pergunta ao WAHA qual é o ID real de WhatsApp do número
+  (`/api/contacts/check-exists`) — contas brasileiras antigas ficam sem o 9º dígito no ID,
+  e mandar para o ID errado não chega a lugar nenhum.
+- Cada vaga é avisada uma vez só. A entrega é registrada por número: se um falhar, só
+  ele é tentado de novo no ciclo seguinte (até 3 tentativas por vaga).
+- Só vagas capturadas nas últimas 24h são avisadas (ligar o recurso não dispara aviso
+  de vaga antiga), no máximo 10 avisos por ciclo.
+- Precisa da chave de IA configurada (sem score não dá para saber se é "boa").
+
+A conexão com o WAHA vem de variáveis de ambiente (veja `deploy/env.example`):
+
+| Variável | Padrão | Para quê |
+|---|---|---|
+| `WAHA_URL` | — (obrigatória) | ex. `http://127.0.0.1:3000` |
+| `WAHA_API_KEY` | vazio | mesmo valor de `WAHA_API_KEY` do container do WAHA |
+| `WAHA_SESSION` | `default` | nome da sessão com o WhatsApp conectado |
+
+## Rodando num servidor Ubuntu (junto do WAHA)
+
+O Workana bloqueia navegador headless, então no servidor o Chromium roda como janela
+normal dentro de um **display virtual (Xvfb)**. O script de instalação cuida disso, do
+Node 20+, das bibliotecas do Chromium, de um usuário de serviço (`workana`) e do serviço
+systemd.
+
+```bash
+git clone <repo> nesstech-workana && cd nesstech-workana
+sudo bash deploy/install.sh
+sudo nano /etc/nesstech-workana/env      # WAHA_URL / WAHA_API_KEY / WAHA_SESSION
+sudo systemctl restart nesstech-workana
+```
+
+Para atualizar depois: `git pull && sudo bash deploy/install.sh` (não mexe em
+`/etc/nesstech-workana` nem nos dados).
+
+| O quê | Onde |
+|---|---|
+| Código | `/opt/nesstech-workana` |
+| Dados (cofre, sessão, vagas, diagnósticos) | `/var/lib/nesstech-workana/data` |
+| Configuração (env) | `/etc/nesstech-workana/env` (root, 0600) |
+| Serviço | `systemctl status nesstech-workana` · `journalctl -u nesstech-workana -f` |
+
+**Acesso ao painel:** ele continua escutando só em `127.0.0.1` (não tem login próprio
+depois que o cofre é desbloqueado). Do seu computador:
+
+```bash
+ssh -L 4173:127.0.0.1:4173 usuario@servidor
+```
+
+e abra http://127.0.0.1:4173. Se mesmo assim quiser expor, defina `HOST` no env e
+coloque um proxy com autenticação na frente.
+
+**Desbloqueio automático após reinício:** o agendador só roda com o cofre desbloqueado.
+Num servidor, ninguém está lá para digitar a senha mestra depois de um reboot, então dá
+para gravá-la num arquivo legível só pelo serviço:
+
+```bash
+sudo install -m 640 -o root -g workana /dev/stdin /etc/nesstech-workana/master-password
+# digite a senha, Enter, Ctrl+D
+sudo systemctl restart nesstech-workana
+```
+
+O env já aponta para esse arquivo (`WORKANA_MASTER_PASSWORD_FILE`). Troca consciente:
+quem tiver root no servidor consegue ler a senha e decriptar `db.json`. Sem o arquivo,
+desbloqueie pelo painel depois de cada reinício.
+
+**Migrando os dados desta máquina:** para levar cofre, configurações e a sessão já
+logada do Workana (evita login/2FA no servidor), copie a pasta `data/` com o serviço
+parado:
+
+```bash
+# daqui (pare o painel local antes):
+scp -r data usuario@servidor:/tmp/workana-data
+# no servidor:
+sudo systemctl stop nesstech-workana
+sudo cp -r /tmp/workana-data/. /var/lib/nesstech-workana/data/
+sudo chown -R workana:workana /var/lib/nesstech-workana/data
+sudo rm -rf /tmp/workana-data
+sudo systemctl start nesstech-workana
+```
+
 ## Testes
 
 ```bash
 npm test
 ```
 
-Cobre o parsing de orçamento e, principalmente, o pipeline de decisão da fila
+Cobre o parsing de orçamento, os avisos de WhatsApp (com o WAHA simulado) e, principalmente, o pipeline de decisão da fila
 automática com o navegador e a IA substituídos por stubs — cada caso verifica que ela
 **se recusa** a enviar quando deveria (score baixo, vaga lotada, termo vetado, orçamento
 ilegível, rascunho vazio, teto diário, não armada). Os testes usam um diretório de dados
@@ -194,11 +291,14 @@ server/
     autoSend.js            fila automática: filtros, score, tetos, circuit breaker
     workanaResponses.js    checagem de respostas/status das vagas enviadas
     aiProposal.js           rascunho + score da vaga via Gemini
+    waha.js                 cliente HTTP do WAHA (WhatsApp)
+    opportunityNotifier.js  aviso no WhatsApp das vagas novas com score alto
     scanAndDraft.js         busca vagas novas + gera rascunhos
     scheduler.js             scanAndDraft + runAutoSend + checkResponses a cada N min
 config/selectors.json    seletores do formulário de proposta (ajustável)
 public/                  dashboard (HTML/CSS/JS puro, sem build)
-test/                    smoke.js + autosend.js (npm test)
+deploy/                  instalação no Ubuntu: install.sh, unit systemd, env.example
+test/                    smoke.js + autosend.js + whatsapp.js (npm test)
 data/                    banco local, sessão do navegador e diagnósticos (gitignored)
 ```
 

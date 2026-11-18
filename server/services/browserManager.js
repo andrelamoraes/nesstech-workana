@@ -12,10 +12,30 @@ let browserPromise = null;
 async function getBrowser() {
   if (!browserPromise) {
     const show = process.env.WORKANA_SHOW_WINDOW === 'true';
+    // A real window needs a display. On a Linux server there is none, so the
+    // app must run under a virtual one (Xvfb) — deploy/nesstech-workana.service
+    // does that with xvfb-run. Fail with a useful message instead of
+    // Playwright's generic "Missing X server".
+    if (process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) {
+      throw new Error(
+        'Sem display gráfico ($DISPLAY vazio). No servidor, rode via xvfb-run ' +
+          '(ex: xvfb-run -a npm start) ou pelo serviço systemd em deploy/.'
+      );
+    }
     browserPromise = chromium.launch({
       headless: false,
       args: show ? [] : ['--start-minimized']
     });
+    // On a long-running server a crashed/killed Chromium (or a failed launch)
+    // must not stay cached forever — drop it so the next call relaunches.
+    const launching = browserPromise;
+    launching
+      .then((browser) => browser.on('disconnected', () => {
+        if (browserPromise === launching) browserPromise = null;
+      }))
+      .catch(() => {
+        if (browserPromise === launching) browserPromise = null;
+      });
     logger.info(`Navegador do Workana iniciado (${show ? 'janela visível' : 'minimizado'}).`);
   }
   return browserPromise;
@@ -33,9 +53,14 @@ async function jitter(min = 300, max = 1200) {
 
 async function shutdown() {
   if (browserPromise) {
-    const browser = await browserPromise;
-    await browser.close();
+    const pending = browserPromise;
     browserPromise = null;
+    try {
+      const browser = await pending;
+      await browser.close();
+    } catch {
+      // launch had failed or the browser was already gone — nothing to close
+    }
   }
 }
 

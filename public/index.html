@@ -172,6 +172,22 @@
         <input type="number" id="scanIntervalMinutes" min="5">
       </fieldset>
 
+      <fieldset>
+        <legend>Avisos por WhatsApp (WAHA)</legend>
+        <p class="muted small">
+          A cada vaga nova com score da IA igual ou acima do mínimo, manda título, faixa de
+          pagamento e link da vaga para os números abaixo, pela sessão do WAHA neste servidor.
+        </p>
+        <p class="muted small" id="wahaStatus"></p>
+        <label class="checkbox"><input type="checkbox" id="waEnabled"> Ligar avisos por WhatsApp</label>
+        <label>Números (com DDI e DDD, separados por vírgula)</label>
+        <input type="text" id="waRecipients" placeholder="5511999999999, 5521999999999">
+        <label>Score mínimo da IA para avisar (0-100)</label>
+        <input type="number" id="waMinScore" min="0" max="100">
+        <button type="button" id="waTestBtn" class="secondary">Enviar mensagem de teste</button>
+        <p class="muted small" id="waTestResult"></p>
+      </fieldset>
+
       <fieldset class="danger-zone">
         <legend>Envio automático (sem clique)</legend>
         <p class="muted small">
